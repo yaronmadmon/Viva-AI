@@ -9,6 +9,9 @@ from pydantic import BaseModel
 
 from src.kernel.models.artifact import ArtifactType, ClaimType, EvidenceType
 
+# Optional[float] used in ValidationRule
+# (imported via typing above)
+
 
 class ValidationMode(str, Enum):
     """Validation strictness modes."""
@@ -26,6 +29,14 @@ class ValidationRule(BaseModel):
     required_fields: List[str] = []
     min_evidence_count: int = 0
     required_evidence_types: List[EvidenceType] = []
+    # Harvard-level quality gates
+    require_positioning: bool = False         # Must contain intellectual stance
+    require_named_disagreements: int = 0      # Minimum named Author A vs B conflicts
+    require_rejected_alternatives: int = 0    # Minimum rejected methodological alternatives
+    require_failure_conditions: bool = False   # Must state failure conditions
+    require_boundary_conditions: bool = False  # Must state validity boundaries
+    require_before_after: bool = False         # Must use "before vs after" contribution framing
+    max_certainty_score: Optional[float] = None  # Maximum claim certainty score (lower = more cautious)
 
 
 class CitationRequirement(BaseModel):

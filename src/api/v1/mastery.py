@@ -47,10 +47,15 @@ from src.schemas.mastery import (
 router = APIRouter()
 
 
+def _enum_val(e) -> str:
+    """Safely get enum value (SQLite may return str)."""
+    return e.value if hasattr(e, "value") else str(e)
+
+
 def _question_to_schema(q) -> CheckpointQuestionSchema:
     return CheckpointQuestionSchema(
         id=q.id,
-        question_type=q.question_type.value,
+        question_type=_enum_val(q.question_type),
         text=q.text,
         options=q.options,
         topic=q.topic,
@@ -74,10 +79,10 @@ async def get_mastery_progress(
         current_tier=progress.current_tier,
         ai_level=progress.ai_level,
         total_words_written=progress.total_words_written,
-        next_checkpoint=next_cp.value if next_cp else None,
+        next_checkpoint=_enum_val(next_cp) if next_cp else None,
         attempts=[
             CheckpointAttemptSummary(
-                checkpoint_type=a.checkpoint_type.value,
+                checkpoint_type=_enum_val(a.checkpoint_type),
                 passed=a.passed,
                 score=a.score_percentage,
                 completed_at=a.completed_at,
@@ -115,7 +120,7 @@ async def start_checkpoint(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="tier must be 1, 2, or 3")
     return CheckpointStartResponse(
         tier=tier,
-        checkpoint_type=checkpoint_type.value,
+        checkpoint_type=_enum_val(checkpoint_type),
         questions=[_question_to_schema(q) for q in questions],
         required_count=required,
         pass_threshold_description=desc,
@@ -170,7 +175,7 @@ async def submit_checkpoint(
     await tracker.record_checkpoint_result(cr)
 
     return CheckpointResultResponse(
-        checkpoint_type=cr.checkpoint_type.value,
+        checkpoint_type=_enum_val(cr.checkpoint_type),
         total_questions=cr.total_questions,
         correct_answers=cr.correct_answers,
         score_percentage=cr.score_percentage,
@@ -206,7 +211,7 @@ async def get_capabilities(
     return CapabilitiesResponse(
         ai_level=progress.ai_level,
         level_description=level_desc,
-        capabilities=[CapabilityItem(capability=c.value) for c in caps],
+        capabilities=[CapabilityItem(capability=_enum_val(c)) for c in caps],
         next_level_requirements=next_req,
     )
 
@@ -225,11 +230,11 @@ async def generate_ai_suggestion(
     db: DbSession,
 ):
     """Generate an AI suggestion. Requires project view and the capability for the requested suggestion_type."""
+    from src.ai.types import SuggestionType
     from src.ai.sandbox import (
         AISandbox,
         ArtifactContext,
         SuggestionRequest,
-        SuggestionType,
     )
     try:
         suggestion_type = SuggestionType(body.suggestion_type)
@@ -260,7 +265,7 @@ async def generate_ai_suggestion(
     context = ArtifactContext(
         project_id=project_id,
         artifact_id=artifact.id,
-        artifact_type=artifact.artifact_type.value,
+        artifact_type=_enum_val(artifact.artifact_type),
         content=artifact.content or "",
         title=artifact.title,
     )
@@ -282,12 +287,12 @@ async def generate_ai_suggestion(
         suggestion_id=output.suggestion_id,
         artifact_id=body.artifact_id,
         user_id=user.id,
-        suggestion_type=output.suggestion_type.value,
+        suggestion_type=_enum_val(output.suggestion_type),
         action="generated",
     )
     return AISuggestionGenerateResponse(
         suggestion_id=output.suggestion_id,
-        suggestion_type=output.suggestion_type.value,
+        suggestion_type=_enum_val(output.suggestion_type),
         content=output.content,
         confidence=output.confidence,
         watermark_hash=output.watermark_hash,

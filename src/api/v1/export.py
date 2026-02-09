@@ -2,9 +2,11 @@
 Export endpoints - DOCX generation and integrity reports.
 """
 
+import base64
+import re
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, List, Tuple
 from io import BytesIO
 
 from fastapi import APIRouter, HTTPException, Request, status
@@ -22,6 +24,11 @@ from src.kernel.models.permission import PermissionLevel
 from src.engines.audit.effort_gate_service import EffortGateService
 
 router = APIRouter()
+
+
+def _enum_val(e) -> str:
+    """Safely get enum value (SQLite may return str)."""
+    return e.value if hasattr(e, "value") else str(e)
 
 
 # Integrity report schema
@@ -337,7 +344,7 @@ async def export_docx(
     # Metadata
     doc.add_paragraph(f"Author: {owner.full_name}")
     doc.add_paragraph(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    doc.add_paragraph(f"Discipline: {project.discipline_type.value}")
+    doc.add_paragraph(f"Discipline: {_enum_val(project.discipline_type)}")
     doc.add_paragraph()
     
     # Description
@@ -349,19 +356,62 @@ async def export_docx(
     artifact_map = {a.id: a for a in artifacts}
     root_artifacts = [a for a in artifacts if a.parent_id is None]
     
+    # Regex to find base64-embedded images in markdown content
+    _IMG_PATTERN = re.compile(
+        r"!\[([^\]]*)\]\(data:image/png;base64,([A-Za-z0-9+/=\s]+)\)"
+    )
+
+    def _add_content_with_images(content: str):
+        """Add content to doc, extracting and inserting base64 images."""
+        # Split content around image patterns
+        last_end = 0
+        for match in _IMG_PATTERN.finditer(content):
+            # Add text before the image
+            text_before = content[last_end:match.start()].strip()
+            if text_before:
+                doc.add_paragraph(text_before)
+
+            # Decode and insert the image
+            caption = match.group(1)
+            b64_data = match.group(2).replace("\n", "").replace(" ", "")
+            try:
+                image_bytes = base64.b64decode(b64_data)
+                image_stream = BytesIO(image_bytes)
+                doc.add_picture(image_stream, width=Inches(5.5))
+                # Add caption as italic paragraph
+                if caption:
+                    cap_para = doc.add_paragraph()
+                    cap_run = cap_para.add_run(caption)
+                    cap_run.italic = True
+                    cap_run.font.size = Pt(9)
+                    cap_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            except Exception:
+                # If image decoding fails, just note it
+                doc.add_paragraph(f"[Image: {caption}]")
+
+            last_end = match.end()
+
+        # Add any remaining text after the last image
+        remaining = content[last_end:].strip()
+        if remaining:
+            doc.add_paragraph(remaining)
+
     def add_artifact_to_doc(artifact: Artifact, level: int = 1):
         """Recursively add artifact and children to document."""
         # Add heading or paragraph based on type
         if artifact.artifact_type in [ArtifactType.SECTION, ArtifactType.METHOD, ArtifactType.RESULT, ArtifactType.DISCUSSION]:
-            doc.add_heading(artifact.title or f"[{artifact.artifact_type.value}]", level)
+            doc.add_heading(artifact.title or f"[{_enum_val(artifact.artifact_type)}]", level)
         else:
             if artifact.title:
                 p = doc.add_paragraph()
                 p.add_run(artifact.title).bold = True
         
-        # Add content
+        # Add content (with image support)
         if artifact.content:
-            doc.add_paragraph(artifact.content)
+            if "data:image/png;base64," in artifact.content:
+                _add_content_with_images(artifact.content)
+            else:
+                doc.add_paragraph(artifact.content)
         
         # Add children
         children = [a for a in artifacts if a.parent_id == artifact.id]

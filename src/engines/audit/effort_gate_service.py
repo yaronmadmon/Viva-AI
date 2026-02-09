@@ -122,6 +122,52 @@ class EffortGateService:
         )
 
     @classmethod
+    async def check_contribution_precision(
+        cls,
+        db: AsyncSession,
+        project_id: uuid.UUID,
+    ) -> EffortGateResult:
+        """Check that the conclusion has a precise, validated contribution."""
+        from src.engines.validation.contribution_checker import audit_contribution
+
+        # Find conclusion / section artifacts
+        q = select(Artifact).where(
+            and_(
+                Artifact.project_id == project_id,
+                Artifact.deleted_at.is_(None),
+                # Look for conclusion-like sections
+                Artifact.title.ilike("%conclusion%"),
+            )
+        )
+        result = await db.execute(q)
+        conclusions = result.scalars().all()
+        if not conclusions:
+            return EffortGateResult(
+                gate_name="contribution_precision",
+                passed=False,
+                current=0,
+                required=60,
+                message="No conclusion section found – cannot validate contribution",
+            )
+
+        # Audit the combined conclusion text
+        combined = "\n\n".join((a.content or "") for a in conclusions)
+        audit = audit_contribution(combined)
+        passed = audit.precision_score >= 60
+        return EffortGateResult(
+            gate_name="contribution_precision",
+            passed=passed,
+            current=audit.precision_score,
+            required=60,
+            message=(
+                f"Contribution precision: {audit.precision_score}/100 "
+                f"({audit.claim_count} claims, "
+                f"{'has' if audit.has_before_after else 'missing'} before/after framing, "
+                f"{'has' if audit.has_falsifiability else 'missing'} falsifiability)"
+            ),
+        )
+
+    @classmethod
     async def evaluate_project(
         cls,
         db: AsyncSession,
@@ -130,7 +176,8 @@ class EffortGateService:
         """Evaluate all effort gates for a project."""
         link_result = await cls.check_claim_evidence_links(db, project_id)
         notes_result = await cls.check_notes_words(db, project_id)
-        gates = [link_result, notes_result]
+        contribution_result = await cls.check_contribution_precision(db, project_id)
+        gates = [link_result, notes_result, contribution_result]
         all_passed = all(g.passed for g in gates)
         return EffortGateReport(
             project_id=project_id,

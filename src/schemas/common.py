@@ -55,3 +55,4 @@ class HealthResponse(BaseModel):
     status: str = "ok"
     version: str
     database: str = "connected"
+    ai_configured: bool = False

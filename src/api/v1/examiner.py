@@ -20,6 +20,11 @@ from src.kernel.models.permission import PermissionLevel
 router = APIRouter()
 
 
+def _enum_val(e) -> str:
+    """Safely get enum value (SQLite may return str)."""
+    return e.value if hasattr(e, "value") else str(e)
+
+
 def _require_examiner(user: CurrentUser) -> None:
     """Ensure user has examiner role."""
     if user.role != UserRole.EXAMINER and user.role != UserRole.ADMIN:
@@ -66,7 +71,7 @@ async def get_frozen_content(
 
     units_data = []
     for unit in units:
-        unit_state = unit.state.value if hasattr(unit.state, "value") else str(unit.state)
+        unit_state = _enum_val(unit.state)
         artifact_ids = unit.artifact_ids or []
         artifacts_data = []
         for aid_str in artifact_ids:
@@ -87,7 +92,7 @@ async def get_frozen_content(
                     "id": str(art.id),
                     "title": art.title,
                     "content": art.content,
-                    "artifact_type": art.artifact_type.value if hasattr(art.artifact_type, "value") else str(art.artifact_type),
+                    "artifact_type": _enum_val(art.artifact_type),
                 })
         units_data.append({
             "id": str(unit.id),

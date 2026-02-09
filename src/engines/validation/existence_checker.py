@@ -11,7 +11,6 @@ Rate limit (429) returns WARNING and is not cached as success.
 """
 
 import asyncio
-import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 from xml.etree import ElementTree as ET
@@ -20,8 +19,9 @@ import httpx
 from pydantic import BaseModel
 
 from src.engines.validation.format_validator import ValidationResult, ValidationStatus
+from src.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Default timeout and retry
 HTTP_TIMEOUT = 10.0

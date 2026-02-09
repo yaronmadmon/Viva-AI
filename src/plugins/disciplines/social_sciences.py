@@ -46,12 +46,16 @@ class SocialSciencesPack(DisciplinePack):
                 mode=ValidationMode.SOFT,
                 description="Claims should be supported by appropriate evidence",
                 min_evidence_count=1,
+                max_certainty_score=45.0,
             ),
             ArtifactType.METHOD: ValidationRule(
                 artifact_type=ArtifactType.METHOD,
                 mode=ValidationMode.SOFT,
-                description="Methodology must address sampling and ethics",
+                description="Methodology must be a defensive argument with rejected alternatives and failure conditions",
                 required_fields=["participants", "ethics_approval"],
+                require_rejected_alternatives=2,
+                require_failure_conditions=True,
+                require_boundary_conditions=True,
             ),
             ArtifactType.RESULT: ValidationRule(
                 artifact_type=ArtifactType.RESULT,
@@ -67,6 +71,19 @@ class SocialSciencesPack(DisciplinePack):
                 artifact_type=ArtifactType.SOURCE,
                 mode=ValidationMode.SOFT,
                 description="Peer-reviewed sources preferred",
+            ),
+            ArtifactType.SECTION: ValidationRule(
+                artifact_type=ArtifactType.SECTION,
+                mode=ValidationMode.SOFT,
+                description="Sections must contain intellectual positioning and named disagreements",
+                require_positioning=True,
+                require_named_disagreements=3,
+            ),
+            ArtifactType.DISCUSSION: ValidationRule(
+                artifact_type=ArtifactType.DISCUSSION,
+                mode=ValidationMode.SOFT,
+                description="Discussion must scope claims carefully and address limitations in detail",
+                max_certainty_score=40.0,
             ),
         }
     

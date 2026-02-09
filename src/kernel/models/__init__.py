@@ -43,6 +43,7 @@ from src.kernel.models.review_response import ReviewResponse
 from src.kernel.models.event_log import EventLog, EventType
 from src.kernel.models.permission import Permission, PermissionLevel, ResourceType
 from src.kernel.models.mastery import UserMasteryProgress, CheckpointAttempt
+from src.kernel.models.avatar_conversation import AvatarMessage
 from src.kernel.models.verification import ContentVerificationRequest
 
 __all__ = [
@@ -96,6 +97,8 @@ __all__ = [
     # Mastery
     "UserMasteryProgress",
     "CheckpointAttempt",
+    # Avatar
+    "AvatarMessage",
     # Verification
     "ContentVerificationRequest",
 ]

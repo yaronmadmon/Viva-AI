@@ -47,12 +47,15 @@ class LegalPack(DisciplinePack):
                 description="Legal claims must cite authority",
                 min_evidence_count=1,
                 required_evidence_types=[EvidenceType.CITATION],
+                max_certainty_score=40.0,
             ),
             ArtifactType.METHOD: ValidationRule(
                 artifact_type=ArtifactType.METHOD,
                 mode=ValidationMode.SOFT,
-                description="Legal methodology should specify jurisdiction and approach",
+                description="Legal methodology must specify jurisdiction and justify approach against alternatives",
                 required_fields=["jurisdiction", "legal_framework"],
+                require_rejected_alternatives=1,
+                require_boundary_conditions=True,
             ),
             ArtifactType.EVIDENCE: ValidationRule(
                 artifact_type=ArtifactType.EVIDENCE,
@@ -63,6 +66,13 @@ class LegalPack(DisciplinePack):
                 artifact_type=ArtifactType.SOURCE,
                 mode=ValidationMode.HARD,
                 description="Sources must use proper legal citation format",
+            ),
+            ArtifactType.SECTION: ValidationRule(
+                artifact_type=ArtifactType.SECTION,
+                mode=ValidationMode.SOFT,
+                description="Sections must contain doctrinal positioning and named scholarly disagreements",
+                require_positioning=True,
+                require_named_disagreements=3,
             ),
         }
     

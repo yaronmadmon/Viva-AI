@@ -31,9 +31,13 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_from_email: str = "noreply@example.com"
     
+    # OpenAI
+    openai_api_key: str = ""
+
     # Application
     debug: bool = False
     environment: str = "development"
+    log_level: str = "INFO"  # DEBUG, INFO, WARNING, ERROR
     
     # API Settings
     api_v1_prefix: str = "/api/v1"
@@ -44,6 +48,8 @@ class Settings(BaseSettings):
     rate_limit_auth_per_minute: int = 10   # per IP for login/register
     rate_limit_api_per_minute: int = 100   # per user or IP for general API
     rate_limit_ai_per_hour: int = 20       # per user for AI suggestion endpoints
+    rate_limit_tts_per_hour: int = 50      # per user for TTS endpoint
+    rate_limit_avatar_per_hour: int = 100  # per user for avatar chat turns
     rate_limit_enabled: bool = True
 
 

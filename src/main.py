@@ -7,7 +7,7 @@ FastAPI application entry point.
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
@@ -16,9 +16,12 @@ from src.config import get_settings
 from src.database import init_db, close_db
 from src.api.v1 import router as api_v1_router
 from src.api.middleware.rate_limit import RateLimitMiddleware
+from src.api.middleware.request_id import RequestIdMiddleware
 from src.schemas.common import HealthResponse
+from src.logging_config import configure_logging, get_logger
 
 settings = get_settings()
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
@@ -28,17 +31,24 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     
     Runs startup and shutdown tasks.
     """
+    # Configure logging first
+    configure_logging(
+        log_level=settings.log_level,
+        environment=settings.environment,
+        debug=settings.debug,
+    )
+
     # Startup
-    print(f"Starting {settings.project_name} v{settings.version}")
+    logger.info("Starting %s v%s", settings.project_name, settings.version)
     await init_db()
-    print("Database initialized")
-    
+    logger.info("Database initialized")
+
     yield
-    
+
     # Shutdown
-    print("Shutting down...")
+    logger.info("Shutting down...")
     await close_db()
-    print("Database connections closed")
+    logger.info("Database connections closed")
 
 
 # Create FastAPI application
@@ -73,20 +83,59 @@ app = FastAPI(
 )
 
 
-# CORS middleware
+# Middleware order: add_middleware stacks innermost-first, so LAST added = OUTERMOST.
+# CORS must be outermost so it adds headers to ALL responses (including 429, errors from
+# rate limit, etc.). Otherwise responses from inner middleware bypass CORS.
+_cors_origins = [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://localhost:5173",  # Vite default
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:3001",
+]
+if not (settings.debug or settings.environment == "development"):
+    _cors_origins = ["https://ramp.example.com"] + _cors_origins
+
+# Add these first (they become inner middleware)
+app.add_middleware(RateLimitMiddleware)
+app.add_middleware(RequestIdMiddleware)
+
+# CORS last = outermost = wraps everything; every response gets CORS headers
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if settings.debug else ["https://ramp.example.com"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# API Gateway rate limiting (per user / per IP)
-app.add_middleware(RateLimitMiddleware)
+
+def _cors_headers(request: Request) -> dict:
+    """Return CORS headers for error responses so browser receives them (500s often bypass CORS middleware)."""
+    origin = request.headers.get("origin") or ""
+    allow_origin = origin if origin in _cors_origins else _cors_origins[0]
+    return {
+        "Access-Control-Allow-Origin": allow_origin,
+        "Access-Control-Allow-Credentials": "true",
+        "Access-Control-Allow-Methods": "*",
+        "Access-Control-Allow-Headers": "*",
+    }
 
 
-# Exception handlers
+# Exception handlers (include CORS headers so 4xx/5xx responses are not blocked by browser)
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Ensure 401/403/404 etc. responses have CORS headers."""
+    headers = _cors_headers(request)
+    req_id = getattr(request.state, "request_id", None)
+    if req_id:
+        headers["X-Request-ID"] = req_id
+    content = {"detail": exc.detail} if isinstance(exc.detail, str) else {"detail": exc.detail}
+    if req_id and exc.status_code >= 500:
+        content["request_id"] = req_id
+    return JSONResponse(status_code=exc.status_code, content=content, headers=headers)
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(
     request: Request,
@@ -101,13 +150,17 @@ async def validation_exception_handler(
             "message": error["msg"],
             "type": error["type"],
         })
-    
+    headers = _cors_headers(request)
+    req_id = getattr(request.state, "request_id", None)
+    if req_id:
+        headers["X-Request-ID"] = req_id
+    content = {"detail": "Validation error", "errors": errors}
+    if req_id:
+        content["request_id"] = req_id
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={
-            "detail": "Validation error",
-            "errors": errors,
-        },
+        content=content,
+        headers=headers,
     )
 
 
@@ -116,30 +169,42 @@ async def general_exception_handler(
     request: Request,
     exc: Exception,
 ):
-    """Handle unexpected exceptions."""
+    """Handle unexpected exceptions. CORS headers added so browser does not hide 500 behind CORS error."""
+    logger.exception("Unhandled exception: %s", exc)
+    headers = _cors_headers(request)
+    req_id = getattr(request.state, "request_id", None)
+    if req_id:
+        headers["X-Request-ID"] = req_id
     if settings.debug:
-        return JSONResponse(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content={
-                "detail": str(exc),
-                "type": type(exc).__name__,
-            },
-        )
+        content = {
+            "detail": str(exc),
+            "type": type(exc).__name__,
+            "request_id": req_id,
+        }
     else:
-        return JSONResponse(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content={"detail": "Internal server error"},
-        )
+        content = {"detail": "Internal server error", "request_id": req_id}
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content=content,
+        headers=headers,
+    )
 
 
 # Health check endpoint
 @app.get("/health", response_model=HealthResponse, tags=["Health"])
 async def health_check():
     """Check application health."""
+    key = (settings.openai_api_key or "").strip()
+    ai_configured = bool(
+        key
+        and not key.startswith("sk-your-")
+        and key != "sk-your-openai-api-key"
+    )
     return HealthResponse(
         status="ok",
         version=settings.version,
         database="connected",
+        ai_configured=ai_configured,
     )
 
 

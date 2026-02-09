@@ -55,11 +55,19 @@ class ProgressTracker:
 
     def _row_to_progress(self, row: UserMasteryProgress, attempts: List[CheckpointAttemptRow]) -> UserProgress:
         """Build UserProgress Pydantic from DB row and attempt rows."""
+        def _safe_checkpoint_type(val) -> CheckpointType:
+            if isinstance(val, CheckpointType):
+                return val
+            try:
+                return CheckpointType(str(val)) if val else CheckpointType.TIER_1_COMPREHENSION
+            except (ValueError, TypeError):
+                return CheckpointType.TIER_1_COMPREHENSION
+
         attempt_list = []
         for i, a in enumerate(attempts):
             attempt_list.append(
                 CheckpointAttempt(
-                    checkpoint_type=CheckpointType(a.checkpoint_type),
+                    checkpoint_type=_safe_checkpoint_type(a.checkpoint_type),
                     attempt_number=i + 1,
                     score_percentage=a.score,
                     passed=a.passed,

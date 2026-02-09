@@ -39,6 +39,11 @@ from src.kernel.models.permission import PermissionLevel
 router = APIRouter()
 
 
+def _enum_val(e) -> str:
+    """Safely get enum value (SQLite may return str)."""
+    return e.value if hasattr(e, "value") else str(e)
+
+
 # Comment Thread endpoints
 
 @router.post("/artifacts/{artifact_id}/threads", response_model=CommentThreadResponse, status_code=status.HTTP_201_CREATED)
@@ -449,7 +454,7 @@ async def request_review(
         requester_name=user.full_name,
         reviewer_id=review.reviewer_id,
         reviewer_name=reviewer.full_name,
-        status=review.status.value,
+        status=_enum_val(review.status),
         message=review.message,
         response_message=review.response_message,
         responded_at=review.responded_at,
@@ -483,7 +488,7 @@ async def list_advisor_review_queue(
         reviewer_query = select(User).where(User.id == review.reviewer_id)
         reviewer_result = await db.execute(reviewer_query)
         reviewer = reviewer_result.scalar_one_or_none() or user
-        status_val = review.status.value if hasattr(review.status, "value") else str(review.status)
+        status_val = _enum_val(review.status)
         response.append(ReviewRequestResponse(
             id=review.id,
             project_id=review.project_id,
@@ -536,7 +541,7 @@ async def list_reviews(
         reviewer_query = select(User).where(User.id == review.reviewer_id)
         reviewer = (await db.execute(reviewer_query)).scalar_one()
         
-        status_val = review.status.value if hasattr(review.status, "value") else str(review.status)
+        status_val = _enum_val(review.status)
         response.append(ReviewRequestResponse(
             id=review.id,
             project_id=review.project_id,
@@ -594,7 +599,7 @@ async def respond_to_review(
         entity_id=review.id,
         user_id=user.id,
         payload={
-            "status": data.status.value,
+            "status": _enum_val(data.status),
         },
         ip_address=get_client_ip(request),
     )
@@ -611,7 +616,7 @@ async def respond_to_review(
         requester_name=requester.full_name,
         reviewer_id=review.reviewer_id,
         reviewer_name=user.full_name,
-        status=review.status.value,
+        status=_enum_val(review.status),
         message=review.message,
         response_message=review.response_message,
         responded_at=review.responded_at,

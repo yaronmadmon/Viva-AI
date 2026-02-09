@@ -47,12 +47,16 @@ class STEMPack(DisciplinePack):
                 description="Claims must be supported by quantitative evidence",
                 min_evidence_count=1,
                 required_evidence_types=[EvidenceType.QUANTITATIVE],
+                max_certainty_score=40.0,  # Low tolerance for overreach
             ),
             ArtifactType.METHOD: ValidationRule(
                 artifact_type=ArtifactType.METHOD,
                 mode=ValidationMode.HARD,
-                description="Methodology must be detailed and reproducible",
+                description="Methodology must be a defensive argument with rejected alternatives and failure conditions",
                 required_fields=["approach", "data_collection", "analysis_method"],
+                require_rejected_alternatives=2,
+                require_failure_conditions=True,
+                require_boundary_conditions=True,
             ),
             ArtifactType.RESULT: ValidationRule(
                 artifact_type=ArtifactType.RESULT,
@@ -70,10 +74,18 @@ class STEMPack(DisciplinePack):
                 mode=ValidationMode.HARD,
                 description="Sources must have DOI or be peer-reviewed",
             ),
+            ArtifactType.SECTION: ValidationRule(
+                artifact_type=ArtifactType.SECTION,
+                mode=ValidationMode.SOFT,
+                description="Sections must contain intellectual positioning and named disagreements",
+                require_positioning=True,
+                require_named_disagreements=3,
+            ),
             ArtifactType.DISCUSSION: ValidationRule(
                 artifact_type=ArtifactType.DISCUSSION,
                 mode=ValidationMode.SOFT,
-                description="Discussion should address limitations",
+                description="Discussion must address limitations, connect to literature tensions, and scope claims carefully",
+                max_certainty_score=35.0,
             ),
         }
     

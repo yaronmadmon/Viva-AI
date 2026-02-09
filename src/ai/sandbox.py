@@ -8,29 +8,17 @@ CRITICAL INVARIANTS:
 - All outputs are watermarked
 """
 
+import time
 import uuid
 from datetime import datetime
-from enum import Enum
 from typing import Any, Dict, Optional
 from pydantic import BaseModel
 
+from src.ai.types import SuggestionType
 from src.ai.prose_limits import ProseLimits
 from src.ai.watermark import Watermarker
+from src.config import get_settings
 from src.engines.mastery.ai_disclosure_controller import AICapability, AIDisclosureController
-
-
-class SuggestionType(str, Enum):
-    """Types of AI suggestions."""
-    OUTLINE = "outline"
-    CLAIM_REFINEMENT = "claim_refinement"
-    SOURCE_RECOMMENDATION = "source_recommendation"
-    GAP_ANALYSIS = "gap_analysis"
-    COMPREHENSION_QUESTION = "comprehension_question"
-    SOURCE_SUMMARY = "source_summary"
-    PARAGRAPH_DRAFT = "paragraph_draft"
-    METHOD_TEMPLATE = "method_template"
-    DEFENSE_QUESTION = "defense_question"
-    CONTRADICTION_FLAG = "contradiction_flag"
 
 
 class ArtifactContext(BaseModel):
@@ -117,8 +105,21 @@ class AISandbox:
         # Get prose limits for this type
         limit = self.prose_limits.get_limit(request.suggestion_type)
         
-        # STUB: Generate content (in production, call actual AI)
-        raw_content = self._stub_generate(request)
+        # Generate content: real OpenAI when key is set, else stub
+        settings = get_settings()
+        key = (settings.openai_api_key or "").strip()
+        is_placeholder = key.startswith("sk-your-") or key == "sk-your-openai-api-key"
+        start_ms = time.perf_counter()
+        model_used = "stub"
+        raw_content: str
+        if key and not is_placeholder:
+            try:
+                raw_content, model_used = await self._openai_generate(request)
+            except Exception:
+                raw_content = self._stub_generate(request)
+        else:
+            raw_content = self._stub_generate(request)
+        generation_time_ms = int((time.perf_counter() - start_ms) * 1000)
         
         # Apply prose limits
         truncated = False
@@ -141,13 +142,15 @@ class AISandbox:
             suggestion_id=suggestion_id,
             suggestion_type=request.suggestion_type,
             content=raw_content,
-            confidence=0.8,  # Stub confidence
+            confidence=0.8 if model_used == "stub" else 0.85,
             watermark_hash=watermark_hash,
             word_count=len(raw_content.split()),
             truncated=truncated,
             requires_checkbox=limit.checkbox_required,
             min_modification_required=limit.min_modification,
             generated_at=datetime.utcnow(),
+            model_used=model_used,
+            generation_time_ms=generation_time_ms,
         )
         
         return output
@@ -164,7 +167,9 @@ class AISandbox:
         - Inappropriate content
         - Formatting issues
         - Potential hallucinations (stub)
+        - Claim discipline violations (overreach, unhedged claims)
         """
+        import re
         issues = []
         sanitized = content
         
@@ -186,6 +191,42 @@ class AISandbox:
             if len(content.split()) > 200:
                 issues.append("Paragraph draft exceeds 200 word limit")
         
+        # ── Claim discipline hardening ───────────────────────────────────
+        # Catch overreach in AI-generated prose BEFORE it reaches the user.
+        overreach_patterns = [
+            (r"\bproves?\b(?!\s+that)", "proves", "suggests"),
+            (r"\bdemonstrates?\s+conclusively\b", "demonstrates conclusively", "indicates"),
+            (r"\bestablish(?:es)?\s+beyond\s+doubt\b", "establishes beyond doubt", "provides evidence for"),
+            (r"\bundeniab(?:ly|le)\b", "undeniable", "notable"),
+            (r"\birrefutabl[ey]\b", "irrefutable", "substantial"),
+            (r"\bdefinitively\b", "definitively", "substantively"),
+            (r"\b(?:is|are)\s+generalizable?\s+to\s+all\b",
+             "generalizable to all", "may be applicable to similar populations"),
+            (r"\bwill\s+transform\b", "will transform", "may contribute to"),
+            (r"\bready\s+for\s+clinical\s+use\b",
+             "ready for clinical use",
+             "warrants further investigation for potential clinical application"),
+            (r"\bclearly\s+shows?\b", "clearly shows", "appears to indicate"),
+            (r"\bconfirms?\s+(?:the\s+)?hypothesis\b",
+             "confirms hypothesis", "is consistent with the hypothesis"),
+        ]
+        
+        # Content-generating suggestion types that should be claim-disciplined
+        prose_types = {
+            SuggestionType.PARAGRAPH_DRAFT,
+            SuggestionType.METHOD_TEMPLATE,
+            SuggestionType.OUTLINE,
+            SuggestionType.SOURCE_SUMMARY,
+            SuggestionType.CLAIM_REFINEMENT,
+        }
+        
+        if suggestion_type in prose_types:
+            for pattern_str, bad, good in overreach_patterns:
+                pattern = re.compile(pattern_str, re.I)
+                if pattern.search(sanitized):
+                    issues.append(f"Claim overreach detected: '{bad}' → '{good}'")
+                    sanitized = pattern.sub(good, sanitized)
+        
         return ValidationResult(
             valid=len(issues) == 0,
             issues=issues,
@@ -205,9 +246,48 @@ class AISandbox:
             SuggestionType.PARAGRAPH_DRAFT: AICapability.PARAGRAPH_SUGGESTIONS,
             SuggestionType.METHOD_TEMPLATE: AICapability.METHOD_TEMPLATES,
             SuggestionType.DEFENSE_QUESTION: AICapability.DEFENSE_QUESTIONS,
+            # Harvard-level quality engines – available from Level 2+
+            SuggestionType.CLAIM_DISCIPLINE_AUDIT: AICapability.GAP_ANALYSIS,
+            SuggestionType.METHODOLOGY_STRESS_TEST: AICapability.GAP_ANALYSIS,
+            SuggestionType.CONTRIBUTION_VALIDATOR: AICapability.GAP_ANALYSIS,
+            SuggestionType.LITERATURE_CONFLICT_MAP: AICapability.GAP_ANALYSIS,
+            SuggestionType.PEDAGOGICAL_ANNOTATION: AICapability.EXAMINER_SIMULATION,
         }
         return mapping.get(suggestion_type, AICapability.SEARCH_QUERIES)
     
+    def _build_prompt(self, request: SuggestionRequest) -> str:
+        """Build system and user prompt for OpenAI from request."""
+        ctx = request.context
+        st = request.suggestion_type.value.replace("_", " ").title()
+        parts = [
+            f"You are a research writing assistant. Generate a {st} suggestion.",
+            f"Artifact type: {ctx.artifact_type}.",
+            f"Title: {ctx.title or '(none)'}.",
+            f"Current content:\n{ctx.content[:2000] if ctx.content else '(empty)'}",
+        ]
+        if request.additional_instructions:
+            parts.append(f"Additional instructions: {request.additional_instructions}")
+        return "\n\n".join(parts)
+
+    async def _openai_generate(self, request: SuggestionRequest) -> tuple[str, str]:
+        """Call OpenAI API. Returns (content, model_used)."""
+        from openai import AsyncOpenAI
+        settings = get_settings()
+        client = AsyncOpenAI(api_key=settings.openai_api_key)
+        prompt = self._build_prompt(request)
+        # Prefer a smaller/faster model for suggestions
+        model = "gpt-4o-mini"
+        response = await client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": "You provide concise, factual research writing suggestions. Output only the suggested content, no meta-commentary."},
+                {"role": "user", "content": prompt},
+            ],
+            max_tokens=800,
+        )
+        content = (response.choices[0].message.content or "").strip()
+        return content, model
+
     def _stub_generate(self, request: SuggestionRequest) -> str:
         """
         STUB: Generate content.

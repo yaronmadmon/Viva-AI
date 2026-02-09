@@ -12,7 +12,7 @@ From the architecture spec:
 from typing import Dict, Optional
 from pydantic import BaseModel
 
-from src.ai.sandbox import SuggestionType
+from src.ai.types import SuggestionType
 
 
 class ProseLimit(BaseModel):
@@ -96,6 +96,38 @@ DEFAULT_LIMITS: Dict[SuggestionType, ProseLimit] = {
         max_words=None,
         watermark_required=False,
         description="Contradiction detection. Flags for review only.",
+    ),
+
+    # ── Harvard-level quality engines ────────────────────────────────────
+    SuggestionType.CLAIM_DISCIPLINE_AUDIT: ProseLimit(
+        suggestion_type=SuggestionType.CLAIM_DISCIPLINE_AUDIT,
+        max_words=None,
+        watermark_required=False,
+        description="Claim discipline audit. Classifies sentences and flags overreach. Advisory only.",
+    ),
+    SuggestionType.METHODOLOGY_STRESS_TEST: ProseLimit(
+        suggestion_type=SuggestionType.METHODOLOGY_STRESS_TEST,
+        max_words=None,
+        watermark_required=False,
+        description="Methodology stress test. Generates examiner questions and flags missing defenses.",
+    ),
+    SuggestionType.CONTRIBUTION_VALIDATOR: ProseLimit(
+        suggestion_type=SuggestionType.CONTRIBUTION_VALIDATOR,
+        max_words=None,
+        watermark_required=False,
+        description="Contribution validator. Checks precision, falsifiability, and 'before vs after' framing.",
+    ),
+    SuggestionType.LITERATURE_CONFLICT_MAP: ProseLimit(
+        suggestion_type=SuggestionType.LITERATURE_CONFLICT_MAP,
+        max_words=None,
+        watermark_required=False,
+        description="Literature conflict mapping. Detects named disagreements and tension score.",
+    ),
+    SuggestionType.PEDAGOGICAL_ANNOTATION: ProseLimit(
+        suggestion_type=SuggestionType.PEDAGOGICAL_ANNOTATION,
+        max_words=None,
+        watermark_required=False,
+        description="Pedagogical meta-commentary. Explains why each structural move was made.",
     ),
 }
 

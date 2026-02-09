@@ -21,6 +21,11 @@ from src.orchestration.state_machine import StateMachine, can_transition, valid_
 router = APIRouter()
 
 
+def _enum_val(e) -> str:
+    """Safely get enum value (SQLite may return str)."""
+    return e.value if hasattr(e, "value") else str(e)
+
+
 @router.get("/projects/{project_id}/submission-units", response_model=list[SubmissionUnitResponse])
 async def list_submission_units(
     project_id: uuid.UUID,
@@ -42,7 +47,7 @@ async def list_submission_units(
             project_id=u.project_id,
             title=u.title,
             artifact_ids=[str(aid) for aid in (u.artifact_ids or [])],
-            state=u.state.value,
+            state=_enum_val(u.state),
             state_changed_at=u.state_changed_at,
             state_changed_by=u.state_changed_by,
             current_review_request_id=u.current_review_request_id,
@@ -84,7 +89,7 @@ async def create_submission_unit(
     db.add(unit)
     await db.flush()
     await db.refresh(unit)
-    state_val = unit.state.value if hasattr(unit.state, "value") else str(unit.state)
+    state_val = _enum_val(unit.state)
     return SubmissionUnitResponse(
         id=unit.id,
         project_id=unit.project_id,
@@ -120,7 +125,7 @@ async def get_submission_unit(
     unit = result.scalar_one_or_none()
     if not unit:
         raise HTTPException(status_code=404, detail="Submission unit not found")
-    state_val = unit.state.value if hasattr(unit.state, "value") else str(unit.state)
+    state_val = _enum_val(unit.state)
     return SubmissionUnitResponse(
         id=unit.id,
         project_id=unit.project_id,
@@ -159,7 +164,7 @@ async def transition_submission_unit_state(
     if not unit:
         raise HTTPException(status_code=404, detail="Submission unit not found")
 
-    from_state = unit.state.value if hasattr(unit.state, "value") else str(unit.state)
+    from_state = _enum_val(unit.state)
     if not can_transition(user.role, from_state, data.to_state, "submission_unit"):
         raise HTTPException(
             status_code=403,
@@ -176,7 +181,7 @@ async def transition_submission_unit_state(
     )
     await db.flush()
     await db.refresh(unit)
-    state_val = unit.state.value if hasattr(unit.state, "value") else str(unit.state)
+    state_val = _enum_val(unit.state)
     return SubmissionUnitResponse(
         id=unit.id,
         project_id=unit.project_id,

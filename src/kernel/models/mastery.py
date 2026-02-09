@@ -63,6 +63,9 @@ class UserMasteryProgress(Base, TimestampMixin):
         nullable=True,
     )
 
+    # Teaching avatar contract
+    teacher_contract_accepted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
     __table_args__ = (UniqueConstraint("user_id", "project_id", name="uq_user_mastery_progress_user_project"),)
 
 

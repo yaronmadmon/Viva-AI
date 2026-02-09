@@ -4,8 +4,9 @@ Uses SQLAlchemy 2.0 async pattern.
 """
 
 from typing import AsyncGenerator
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.pool import NullPool
 
 from src.config import get_settings
 
@@ -15,13 +16,23 @@ settings = get_settings()
 is_sqlite = settings.database_url.startswith("sqlite")
 
 if is_sqlite:
-    # SQLite-specific settings for async
+    # SQLite with NullPool: every session gets its own connection, avoiding
+    # "cannot commit transaction – SQL statements in progress" from StaticPool.
     engine = create_async_engine(
         settings.database_url,
         echo=settings.debug,
         connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
+        poolclass=NullPool,
     )
+
+    @event.listens_for(engine.sync_engine, "connect")
+    def _set_sqlite_pragma(dbapi_conn, connection_record):
+        """Enable WAL mode + foreign keys on every new SQLite connection."""
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.execute("PRAGMA busy_timeout=5000")
+        cursor.close()
 else:
     # PostgreSQL settings with connection pooling
     engine = create_async_engine(

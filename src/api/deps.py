@@ -101,6 +101,11 @@ CurrentUser = Annotated[User, Depends(get_current_user)]
 OptionalUser = Annotated[Optional[User], Depends(get_current_user_optional)]
 
 
+def get_request_id(request: Request) -> Optional[str]:
+    """Get request correlation ID (set by RequestIdMiddleware)."""
+    return getattr(request.state, "request_id", None)
+
+
 def get_client_ip(request: Request) -> Optional[str]:
     """Extract client IP from request."""
     forwarded = request.headers.get("X-Forwarded-For")

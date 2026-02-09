@@ -11,12 +11,34 @@ from pydantic import BaseModel, Field
 from src.kernel.models.project import DisciplineType, ProjectStatus, PermissionLevel
 
 
+class IntellectualPositioning(BaseModel):
+    """Intellectual positioning metadata — forces the student to declare
+    their scholarly stance before generation begins."""
+    
+    aligned_school: Optional[str] = Field(
+        None,
+        description="Which school of thought, theoretical tradition, or paradigm is this work aligned with?",
+        max_length=1000,
+    )
+    rejected_positions: Optional[str] = Field(
+        None,
+        description="Which positions, assumptions, or interpretations does this dissertation reject or modify, and why?",
+        max_length=2000,
+    )
+    expected_critics: Optional[str] = Field(
+        None,
+        description="Who would disagree with this framing, and on what grounds?",
+        max_length=1000,
+    )
+
+
 class ProjectCreate(BaseModel):
     """Project creation request."""
     
     title: str = Field(..., min_length=1, max_length=500)
     description: Optional[str] = None
     discipline_type: DisciplineType = DisciplineType.MIXED
+    positioning: Optional[IntellectualPositioning] = None
 
 
 class ProjectUpdate(BaseModel):
@@ -41,6 +63,7 @@ class ProjectResponse(BaseModel):
     integrity_score: float
     export_blocked: bool
     artifact_count: int = 0
+    generation_pending: bool = True  # True until AI has populated real content
     created_at: datetime
     updated_at: datetime
     
@@ -102,3 +125,17 @@ class ProjectStatsResponse(BaseModel):
     integrity_score: float
     ai_usage_count: int
     last_activity: Optional[datetime]
+
+
+class DocumentChunk(BaseModel):
+    """Single artifact as a chunk in the document view."""
+    id: uuid.UUID
+    artifact_type: str
+    title: Optional[str]
+    content: str
+
+
+class ProjectDocumentResponse(BaseModel):
+    """Ordered list of artifacts for document view (tree order)."""
+    project_id: uuid.UUID
+    artifacts: List[DocumentChunk]

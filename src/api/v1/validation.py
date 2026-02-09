@@ -17,6 +17,11 @@ from src.schemas.validation import ValidationRunResponse
 router = APIRouter()
 
 
+def _enum_val(e) -> str:
+    """Safely get enum value (SQLite may return str)."""
+    return e.value if hasattr(e, "value") else str(e)
+
+
 @router.post("/run", response_model=ValidationRunResponse)
 async def run_project_validation(
     project_id: uuid.UUID,
@@ -58,7 +63,7 @@ async def run_project_validation(
             row = ContentVerificationRequestModel(
                 source_id=source_db_id,
                 claim_id=check.claim_id,
-                check_type=check.check_type.value,
+                check_type=_enum_val(check.check_type),
                 prompt=check.prompt,
                 context=check.context,
             )

@@ -46,8 +46,15 @@ from src.kernel.events.event_store import EventStore
 from src.kernel.permissions.permission_service import PermissionService
 from src.kernel.models.permission import PermissionLevel
 from src.engines.mastery.progress_tracker import ProgressTracker
+from src.logging_config import get_logger
 
 router = APIRouter()
+logger = get_logger(__name__)
+
+
+def _enum_val(e) -> str:
+    """Safely get enum value (SQLite may return str)."""
+    return e.value if hasattr(e, "value") else str(e)
 
 
 def _word_count(text: str) -> int:
@@ -137,7 +144,7 @@ async def create_artifact(
         user_id=user.id,
         payload={
             "project_id": str(project_id),
-            "artifact_type": artifact.artifact_type.value,
+            "artifact_type": _enum_val(artifact.artifact_type),
             "title": artifact.title,
             "content_hash": content_hash,
         },
@@ -153,14 +160,14 @@ async def create_artifact(
     return ArtifactResponse(
         id=artifact.id,
         project_id=artifact.project_id,
-        artifact_type=artifact.artifact_type.value,
+        artifact_type=_enum_val(artifact.artifact_type),
         title=artifact.title,
         content=artifact.content,
         content_hash=artifact.content_hash,
         version=artifact.version,
         parent_id=artifact.parent_id,
         position=artifact.position,
-        contribution_category=artifact.contribution_category.value,
+        contribution_category=_enum_val(artifact.contribution_category),
         ai_modification_ratio=artifact.ai_modification_ratio,
         metadata=artifact.extra_data,
         created_at=artifact.created_at,
@@ -211,14 +218,14 @@ async def get_artifact(
         ArtifactResponse(
             id=c.id,
             project_id=c.project_id,
-            artifact_type=c.artifact_type.value,
+            artifact_type=_enum_val(c.artifact_type),
             title=c.title,
             content=c.content,
             content_hash=c.content_hash,
             version=c.version,
             parent_id=c.parent_id,
             position=c.position,
-            contribution_category=c.contribution_category.value,
+            contribution_category=_enum_val(c.contribution_category),
             ai_modification_ratio=c.ai_modification_ratio,
             metadata=c.extra_data,
             created_at=c.created_at,
@@ -232,7 +239,7 @@ async def get_artifact(
             id=l.id,
             source_artifact_id=l.source_artifact_id,
             target_artifact_id=l.target_artifact_id,
-            link_type=l.link_type.value,
+            link_type=_enum_val(l.link_type),
             strength=l.strength,
             annotation=l.annotation,
             created_by=l.created_by,
@@ -246,7 +253,7 @@ async def get_artifact(
             id=l.id,
             source_artifact_id=l.source_artifact_id,
             target_artifact_id=l.target_artifact_id,
-            link_type=l.link_type.value,
+            link_type=_enum_val(l.link_type),
             strength=l.strength,
             annotation=l.annotation,
             created_by=l.created_by,
@@ -258,14 +265,14 @@ async def get_artifact(
     return ArtifactDetailResponse(
         id=artifact.id,
         project_id=artifact.project_id,
-        artifact_type=artifact.artifact_type.value,
+        artifact_type=_enum_val(artifact.artifact_type),
         title=artifact.title,
         content=artifact.content,
         content_hash=artifact.content_hash,
         version=artifact.version,
         parent_id=artifact.parent_id,
         position=artifact.position,
-        contribution_category=artifact.contribution_category.value,
+        contribution_category=_enum_val(artifact.contribution_category),
         ai_modification_ratio=artifact.ai_modification_ratio,
         metadata=artifact.extra_data,
         created_at=artifact.created_at,
@@ -374,14 +381,14 @@ async def update_artifact(
     return ArtifactResponse(
         id=artifact.id,
         project_id=artifact.project_id,
-        artifact_type=artifact.artifact_type.value,
+        artifact_type=_enum_val(artifact.artifact_type),
         title=artifact.title,
         content=artifact.content,
         content_hash=artifact.content_hash,
         version=artifact.version,
         parent_id=artifact.parent_id,
         position=artifact.position,
-        contribution_category=artifact.contribution_category.value,
+        contribution_category=_enum_val(artifact.contribution_category),
         ai_modification_ratio=artifact.ai_modification_ratio,
         metadata=artifact.extra_data,
         created_at=artifact.created_at,
@@ -421,10 +428,10 @@ async def transition_artifact_state(
     if not has_permission:
         raise HTTPException(status_code=403, detail="Edit permission required")
 
-    if not can_transition(user.role, artifact.internal_state.value, data.to_state, "artifact"):
+    if not can_transition(user.role, _enum_val(artifact.internal_state), data.to_state, "artifact"):
         raise HTTPException(
             status_code=403,
-            detail=f"Cannot transition from {artifact.internal_state.value} to {data.to_state}",
+            detail=f"Cannot transition from {_enum_val(artifact.internal_state)} to {data.to_state}",
         )
 
     sm = StateMachine(db)
@@ -440,14 +447,14 @@ async def transition_artifact_state(
     return ArtifactResponse(
         id=artifact.id,
         project_id=artifact.project_id,
-        artifact_type=artifact.artifact_type.value,
+        artifact_type=_enum_val(artifact.artifact_type),
         title=artifact.title,
         content=artifact.content,
         content_hash=artifact.content_hash,
         version=artifact.version,
         parent_id=artifact.parent_id,
         position=artifact.position,
-        contribution_category=artifact.contribution_category.value,
+        contribution_category=_enum_val(artifact.contribution_category),
         ai_modification_ratio=artifact.ai_modification_ratio,
         metadata=artifact.extra_data,
         created_at=artifact.created_at,
@@ -500,7 +507,7 @@ async def delete_artifact(
         user_id=user.id,
         payload={
             "project_id": str(artifact.project_id),
-            "artifact_type": artifact.artifact_type.value,
+            "artifact_type": _enum_val(artifact.artifact_type),
         },
         ip_address=get_client_ip(request),
     )
@@ -583,7 +590,7 @@ async def create_link(
         payload={
             "source_artifact_id": str(artifact_id),
             "target_artifact_id": str(data.target_artifact_id),
-            "link_type": data.link_type.value,
+            "link_type": _enum_val(data.link_type),
         },
         ip_address=get_client_ip(request),
     )
@@ -592,15 +599,15 @@ async def create_link(
         id=link.id,
         source_artifact_id=link.source_artifact_id,
         target_artifact_id=link.target_artifact_id,
-        link_type=link.link_type.value,
+        link_type=_enum_val(link.link_type),
         strength=link.strength,
         annotation=link.annotation,
         created_by=link.created_by,
         created_at=link.created_at,
         source_title=source.title,
-        source_type=source.artifact_type.value,
+        source_type=_enum_val(source.artifact_type),
         target_title=target.title,
-        target_type=target.artifact_type.value,
+        target_type=_enum_val(target.artifact_type),
     )
 
 
@@ -650,7 +657,7 @@ async def get_artifact_history(
             title=v.title,
             content=v.content,
             content_hash=v.content_hash,
-            contribution_category=v.contribution_category.value,
+            contribution_category=_enum_val(v.contribution_category),
             created_by=v.created_by,
             created_at=v.created_at,
         )
@@ -666,42 +673,56 @@ async def get_artifact_tree(
     db: DbSession,
 ):
     """Get the full artifact tree for a project."""
-    # Get all artifacts for the project
-    query = select(Artifact).where(
-        and_(
-            Artifact.project_id == project_id,
-            Artifact.deleted_at.is_(None),
+    try:
+        # Get all artifacts for the project
+        query = select(Artifact).where(
+            and_(
+                Artifact.project_id == project_id,
+                Artifact.deleted_at.is_(None),
+            )
+        ).order_by(Artifact.position)
+
+        result = await db.execute(query)
+        artifacts = result.scalars().all()
+
+        # Build tree structure
+        artifact_map = {a.id: a for a in artifacts}
+        root_artifacts = []
+
+        def build_node(artifact: Artifact) -> ArtifactTreeNode:
+            children = []
+            for child in artifacts:
+                if child.parent_id != artifact.id:
+                    continue
+                if child.id not in artifact_map:
+                    continue
+                try:
+                    children.append(build_node(artifact_map[child.id]))
+                except Exception as e:
+                    logger.warning("Skipping artifact %s in tree: %s", child.id, e)
+            return ArtifactTreeNode(
+                id=artifact.id,
+                artifact_type=_enum_val(artifact.artifact_type),
+                title=artifact.title,
+                position=artifact.position,
+                version=artifact.version,
+                children=sorted(children, key=lambda c: c.position),
+            )
+
+        for artifact in artifacts:
+            if artifact.parent_id is None:
+                root_artifacts.append(build_node(artifact))
+
+        return ArtifactTreeResponse(
+            project_id=project_id,
+            root_artifacts=sorted(root_artifacts, key=lambda a: a.position),
+            total_count=len(artifacts),
         )
-    ).order_by(Artifact.position)
-    
-    result = await db.execute(query)
-    artifacts = result.scalars().all()
-    
-    # Build tree structure
-    artifact_map = {a.id: a for a in artifacts}
-    root_artifacts = []
-    
-    def build_node(artifact: Artifact) -> ArtifactTreeNode:
-        children = [
-            build_node(artifact_map[child.id])
-            for child in artifacts
-            if child.parent_id == artifact.id
-        ]
-        return ArtifactTreeNode(
-            id=artifact.id,
-            artifact_type=artifact.artifact_type.value,
-            title=artifact.title,
-            position=artifact.position,
-            version=artifact.version,
-            children=sorted(children, key=lambda c: c.position),
-        )
-    
-    for artifact in artifacts:
-        if artifact.parent_id is None:
-            root_artifacts.append(build_node(artifact))
-    
-    return ArtifactTreeResponse(
-        project_id=project_id,
-        root_artifacts=sorted(root_artifacts, key=lambda a: a.position),
-        total_count=len(artifacts),
-    )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Artifact tree error: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to build artifact tree",
+        ) from e

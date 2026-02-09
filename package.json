@@ -1,0 +1,14 @@
+{
+  "name": "viva-ai",
+  "private": true,
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "dev": "npm run dev --prefix frontend",
+    "dev:fresh": "node scripts/dev-fresh.js",
+    "build": "npm run build --prefix frontend",
+    "start": "npm run start --prefix frontend",
+    "lint": "npm run lint --prefix frontend"
+  }
+}

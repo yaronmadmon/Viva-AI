@@ -46,11 +46,13 @@ class HumanitiesPack(DisciplinePack):
                 mode=ValidationMode.SOFT,
                 description="Arguments should be supported by textual evidence",
                 min_evidence_count=1,
+                max_certainty_score=50.0,  # Slightly more tolerance for interpretive claims
             ),
             ArtifactType.METHOD: ValidationRule(
                 artifact_type=ArtifactType.METHOD,
                 mode=ValidationMode.SOFT,
-                description="Theoretical framework should be explained",
+                description="Theoretical framework must be explained and justified against alternatives",
+                require_rejected_alternatives=1,  # Lower than STEM but still required
             ),
             ArtifactType.EVIDENCE: ValidationRule(
                 artifact_type=ArtifactType.EVIDENCE,
@@ -62,10 +64,18 @@ class HumanitiesPack(DisciplinePack):
                 mode=ValidationMode.SOFT,
                 description="Primary and secondary sources both valued",
             ),
+            ArtifactType.SECTION: ValidationRule(
+                artifact_type=ArtifactType.SECTION,
+                mode=ValidationMode.SOFT,
+                description="Sections must contain intellectual positioning and named scholarly disagreements",
+                require_positioning=True,
+                require_named_disagreements=4,  # Higher for humanities – more scholarly debate expected
+            ),
             ArtifactType.DISCUSSION: ValidationRule(
                 artifact_type=ArtifactType.DISCUSSION,
-                mode=ValidationMode.WARNING,
-                description="Should engage with alternative interpretations",
+                mode=ValidationMode.SOFT,
+                description="Must engage with counterarguments and alternative interpretations",
+                max_certainty_score=45.0,
             ),
         }
     
