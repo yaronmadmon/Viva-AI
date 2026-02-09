@@ -9,7 +9,7 @@ import uuid
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select, and_
 
@@ -518,13 +518,12 @@ async def avatar_speak(
             response_format="mp3",
         )
 
-        # Stream the audio response
-        async def _audio_stream():
-            async for chunk in response.iter_bytes(1024):
-                yield chunk
+        # Use .content (bytes) directly instead of iter_bytes() which
+        # returns a sync iterator incompatible with async streaming.
+        audio_bytes = response.content
 
-        return StreamingResponse(
-            _audio_stream(),
+        return Response(
+            content=audio_bytes,
             media_type="audio/mpeg",
             headers={
                 "Cache-Control": "no-cache",
